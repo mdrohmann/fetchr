@@ -25,9 +25,7 @@ var OP_READ = 'read';
  * @param {Object} context Context object, which will become query params
  */
 module.exports = function defaultConstructUri(baseUri, resource, params, config, context) {
-    debug('context: ', context);
     var query = lodash.assign({}, params.query, context);
-    debug('query: ', query);
     var id_param = config.id_param;
     var id_val;
     var final_uri = baseUri + '/' + resource;
