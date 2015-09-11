@@ -22,9 +22,9 @@ var MockErrorService = {
      */
     read: function (req, resource, params, config, callback) {
         callback({
-            statusCode: parseInt(params.statusCode),
-            output: params.output,
-            message: params.message,
+            statusCode: parseInt(params.query.statusCode),
+            output: params.query.output,
+            message: params.query.message,
             read: 'error'
         }, null);
     },
@@ -42,9 +42,9 @@ var MockErrorService = {
      */
     create: function (req, resource, params, body, config, callback) {
         callback({
-            statusCode: parseInt(params.statusCode),
-            message: params.message,
-            output: params.output,
+            statusCode: parseInt(body.params.statusCode),
+            message: body.params.message,
+            output: body.params.output,
             create: 'error'
         }, null);
     },
@@ -62,9 +62,9 @@ var MockErrorService = {
      */
     update: function (req, resource, params, body, config, callback) {
         callback({
-            statusCode: parseInt(params.statusCode),
-            message: params.message,
-            output: params.output,
+            statusCode: parseInt(body.params.statusCode),
+            message: body.params.message,
+            output: body.params.output,
             update: 'error'
         }, null);
     },
@@ -79,11 +79,11 @@ var MockErrorService = {
      * @param {Fetcher~fetcherCallback} callback callback invoked when fetcher is complete.
      * @static
      */
-    delete: function (req, resource, params, config, callback) {
+    delete: function (req, resource, params, body, config, callback) {
         callback({
-            statusCode: parseInt(params.statusCode),
-            message: params.message,
-            output: params.output,
+            statusCode: parseInt(body.params.statusCode),
+            message: body.params.message,
+            output: body.params.output,
             delete: 'error'
         }, null);
     }

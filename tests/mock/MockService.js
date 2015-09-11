@@ -55,7 +55,8 @@ var MockService = {
             },
             args: {
                 resource: resource,
-                params: params
+                body: body,
+                params: params,
             }
         }, this.meta);
         this.meta = null;
@@ -80,7 +81,8 @@ var MockService = {
             },
             args: {
                 resource: resource,
-                params: params
+                params: params,
+                body: body
             }
         }, this.meta);
         this.meta = null;
@@ -96,7 +98,7 @@ var MockService = {
      * @param {Fetcher~fetcherCallback} callback callback invoked when fetcher is complete.
      * @static
      */
-    'delete': function (req, resource, params, config, callback) {
+    'delete': function (req, resource, params, body, config, callback) {
         callback(null, {
             operation: {
                 name: 'delete',
@@ -104,7 +106,8 @@ var MockService = {
             },
             args: {
                 resource: resource,
-                params: params
+                params: params,
+                body: body,
             }
         }, this.meta);
         this.meta = null;

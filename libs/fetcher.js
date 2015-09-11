@@ -6,7 +6,14 @@
 var OP_READ = 'read';
 var OP_CREATE = 'create';
 var OP_UPDATE = 'update';
+var OP_DELETE = 'delete';
 var GET = 'GET';
+var opmap = {
+    'GET': OP_READ,
+    'POST': OP_CREATE,
+    'PUT': OP_UPDATE,
+    'DELETE': OP_DELETE
+};
 var qs = require('querystring');
 var debug = require('debug')('Fetchr');
 var fumble = require('fumble');
@@ -45,6 +52,7 @@ function parseParamValues (params) {
  * @return {Object} object with resolved statusCode & output
  */
 function getErrorResponse(err) {
+    debug('getErrorResponse: ' + JSON.stringify(err));
     var statusCode = err.statusCode || 400;
     var output = {
         message: 'request failed'
@@ -165,7 +173,7 @@ function executeRequest (request, resolve, reject) {
         }
     }];
     var op = request.operation;
-    if ((op === OP_CREATE) || (op === OP_UPDATE)) {
+    if ((op !== OP_READ)) {
         args.splice(3, 0, request._body);
     }
 
@@ -278,76 +286,60 @@ Fetcher.middleware = function () {
     return function (req, res, next) {
         var request;
         var error;
+        var operation;
 
-        if (req.method === GET) {
-            var path = req.path.substr(1).split(';');
-            var resource = path.shift();
+        var paths = req.path && req.path.substr(1).split('/') || [''];
+        var resource = paths.shift();
+        var query = req.query;
+        var requests = req.body;
 
-            if (!Fetcher.isRegistered(resource)) {
-                error = fumble.http.badRequest('Invalid Fetchr Access', {
-                    debug: 'Bad resource ' + resource
-                });
-                error.source = 'fetchr';
-                return next(error);
-            }
-            request = new Request(OP_READ, resource, {req: req});
-            request
-                .params(parseParamValues(qs.parse(path.join('&'))))
-                .end(function (err, data, meta) {
-                    meta = meta || {};
-                    if (meta.headers) {
-                        res.set(meta.headers);
-                    }
-                    if (err) {
-                        var errResponse = getErrorResponse(err);
-                        res.status(errResponse.statusCode).json(errResponse.output);
-                        return;
-                    }
-                    res.status(meta.statusCode || 200).json(data);
-                });
-        } else {
-            var requests = req.body && req.body.requests;
+        debug('resource %s', resource);
 
-            if (!requests || Object.keys(requests).length === 0) {
-                error = fumble.http.badRequest('Invalid Fetchr Access', {
-                    debug: 'No resources'
-                });
-                error.source = 'fetchr';
-                return next(error);
-            }
-
-            var DEFAULT_GUID = 'g0';
-            var singleRequest = requests[DEFAULT_GUID];
-
-            if (!Fetcher.isRegistered(singleRequest.resource)) {
-                error = fumble.http.badRequest('Invalid Fetchr Access', {
-                    debug: 'Bad resource ' + singleRequest.resource
-                });
-                error.source = 'fetchr';
-                return next(error);
-            }
-
-            request = new Request(singleRequest.operation, singleRequest.resource, {req: req});
-            request
-                .params(singleRequest.params)
-                .body(singleRequest.body || {})
-                .end(function(err, data, meta) {
-                    meta = meta || {};
-                    if (meta.headers) {
-                        res.set(meta.headers);
-                    }
-                    if(err) {
-                        var errResponse = getErrorResponse(err);
-                        res.status(errResponse.statusCode).json(errResponse.output);
-                        return;
-                    }
-                    var responseObj = {};
-                    responseObj[DEFAULT_GUID] = {data: data};
-                    res.status(meta.statusCode || 200).json(responseObj);
-                });
+        if (!Fetcher.isRegistered(resource)) {
+            error = fumble.http.badRequest('Invalid Fetchr Access', {
+                debug: 'Bad resource ' + resource
+            });
+            error.source = 'fetchr';
+            return next(error);
         }
-        // TODO: Batching and multi requests
-    };
+
+        if (requests && requests.operation) {
+            operation = requests.operation;
+            delete requests.operation;
+        } else {
+            operation = opmap[req.method];
+        }
+
+        if (!operation) {
+            error = fumble.http.badRequest('Invalid API access, supports only CRUD methods', {
+                debug: 'Bad resource ' + resource
+            });
+            error.source = 'fetchr';
+            return next(error);
+        }
+
+        request = new Request(operation, resource, {req: req});
+        request
+            .params({paths: paths, query: query});
+        if (requests) {
+            request.body(requests);
+        }
+
+        request.end(function (err, data, meta) {
+            meta = meta || {};
+            if (meta.headers) {
+                res.set(meta.headers);
+            }
+            if (err) {
+                var errResponse = getErrorResponse(err);
+                res.status(errResponse.statusCode).json(errResponse.output);
+                return;
+            }
+            debug('sending : ' + JSON.stringify(data));
+            res.status(meta.statusCode || 200)
+                .json(data);
+        });
+    }        // TODO: Batching and multi requests
 };
 
 
@@ -463,7 +455,7 @@ Fetcher.prototype.update = function (resource, params, body, config, callback) {
  * @param {Fetcher~fetcherCallback} callback callback invoked when fetcher is complete.
  * @static
  */
-Fetcher.prototype['delete'] = function (resource, params, config, callback) {
+Fetcher.prototype['delete'] = function (resource, params, body, config, callback) {
     var request = new Request('delete', resource, {req: this.req});
     if (1 === arguments.length) {
         return request;
@@ -480,8 +472,13 @@ Fetcher.prototype['delete'] = function (resource, params, config, callback) {
         config = {};
     }
     request
-        .params(params)
-        .clientConfig(config)
+        .params(params);
+
+    if (body) {
+        request.body(body);
+    }
+
+    request.clientConfig(config)
         .end(callback)
 };
 
@@ -508,4 +505,5 @@ module.exports = Fetcher;
  * @param {Object} data request result
  * @param {Object} [meta] request meta-data
  * @param {number} [meta.statusCode=200] http status code to return
+ * @param {number} [meta.headers] http headers
  */

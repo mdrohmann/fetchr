@@ -1,0 +1,3 @@
+- create custom API handlers
+- use actual PUT and DELETE methods
+- middleware takes PUT and DELETE into account...

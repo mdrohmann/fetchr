@@ -10,7 +10,9 @@ var bodyParser = require('body-parser');
 var app = express();
 
 function dummyHandler (req, res) {
+    console.log(req.query);
     if (req.query.corsDomain === 'test1' && req.get('origin')) {
+        console.log('allow origin!');
         res.set('Access-Control-Allow-Origin', req.get('origin'));
     }
     res.status(200).json(req.query);
@@ -18,7 +20,7 @@ function dummyHandler (req, res) {
 
 app.use(bodyParser.json());
 app.get('/mock_service', dummyHandler);
-app.post('/', dummyHandler);
+app.post('/mock_service', dummyHandler);
 
 var port = 3001;
 var server = http.createServer(app).listen(port);

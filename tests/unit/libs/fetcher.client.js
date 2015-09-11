@@ -6,6 +6,7 @@
 /*globals before,beforeEach,after,afterEach,describe,it */
 "use strict";
 
+var _ = require('lodash');
 var libUrl = require('url');
 var expect = require('chai').expect;
 var mockery = require('mockery');
@@ -32,6 +33,36 @@ describe('Client Fetcher', function () {
                 validateGET && validateGET(url, headers, config);
                 supertest(app)
                     .get(url)
+                    .expect(200)
+                    .end(function (err, res) {
+                        callback(err, {
+                            responseText: res.text
+                        });
+                    });
+            },
+            'delete' : function (url, headers, body, config, callback) {
+                expect(url).to.not.be.empty;
+                expect(callback).to.exist;
+                expect(body).to.exist;
+                validatePOST && validatePOST(url, headers, body, config);
+                supertest(app)
+                    .del(url)
+                    .send(body)
+                    .expect(200)
+                    .end(function (err, res) {
+                        callback(err, {
+                            responseText: res.text
+                        });
+                    });
+            },
+            put : function (url, headers, body, config, callback) {
+                expect(url).to.not.be.empty;
+                expect(callback).to.exist;
+                expect(body).to.exist;
+                validatePOST && validatePOST(url, headers, body, config);
+                supertest(app)
+                    .put(url)
+                    .send(body)
                     .expect(200)
                     .end(function (err, res) {
                         callback(err, {
@@ -66,12 +97,12 @@ describe('Client Fetcher', function () {
         mockery.deregisterAll();
         mockery.disable();
     });
-    var testCrud = function (it, resource, params, body, config, callback) {
+    var testCrud = function (it, resource, params, paths, body, config, callback) {
             it('should handle CREATE', function (done) {
                 var operation = 'create';
                 fetcher
                     [operation](resource)
-                    .params(params)
+                    .params({query: params, paths: paths})
                     .body(body)
                     .clientConfig(config)
                     .end(callback(operation, done));
@@ -80,7 +111,7 @@ describe('Client Fetcher', function () {
                 var operation = 'read';
                 fetcher
                     [operation](resource)
-                    .params(params)
+                    .params({query: params, paths: paths})
                     .clientConfig(config)
                     .end(callback(operation, done));
             });
@@ -88,7 +119,7 @@ describe('Client Fetcher', function () {
                 var operation = 'update';
                 fetcher
                     [operation](resource)
-                    .params(params)
+                    .params({query: params, paths: paths})
                     .body(body)
                     .clientConfig(config)
                     .end(callback(operation, done));
@@ -97,25 +128,26 @@ describe('Client Fetcher', function () {
                 var operation = 'delete';
                 fetcher
                     [operation](resource)
-                    .params(params)
+                    .params({query: params, paths: paths})
                     .clientConfig(config)
                     .end(callback(operation, done));
             });
         };
 
     describe('CRUD Interface', function () {
+        var context = {_csrf: 'stuff'};
         beforeEach(function () {
-            var context = {_csrf: 'stuff'};
             fetcher = new Fetcher({
                 context: context
             });
             validateHTTP({
                 validateGET: function (url, headers, config) {
                     expect(url).to.contain(DEFAULT_XHR_PATH + '/' + resource);
-                    expect(url).to.contain('?_csrf=' + context._csrf);
+                    expect(url).to.contain('_csrf=' + context._csrf);
                 },
                 validatePOST: function (url, headers, body, config) {
-                    expect(url).to.equal(DEFAULT_XHR_PATH + '?_csrf=' + context._csrf);
+                    expect(url).to.contain(DEFAULT_XHR_PATH + '/' + resource);
+                    expect(url).to.contain('_csrf=' + context._csrf);
                 }
             });
         });
@@ -123,6 +155,7 @@ describe('Client Fetcher', function () {
                 uuids: ['1','2','3','4','5']
             };
         var body = { stuff: 'is'};
+        var paths = ['a', 'b'];
         var config = {};
         var callback = function (operation, done) {
                 return function (err, data) {
@@ -134,7 +167,8 @@ describe('Client Fetcher', function () {
                     expect(data.operation.success).to.be.true;
                     expect(data.args).to.exist;
                     expect(data.args.resource).to.equal(resource);
-                    expect(data.args.params).to.eql(params);
+                    expect(data.args.params.query).to.eql(_.assign({}, params, context));
+                    expect(data.args.params.paths).to.eql(paths);
                     done();
                 };
             };
@@ -147,7 +181,7 @@ describe('Client Fetcher', function () {
                     expect(data.operation.success).to.be.true;
                     expect(data.args).to.exist;
                     expect(data.args.resource).to.equal(resource);
-                    expect(data.args.params).to.eql(params);
+                    expect(data.args.params.query).to.eql(_.assign(params, context));
                 } catch (e) {
                     done(e);
                     return;
@@ -162,7 +196,7 @@ describe('Client Fetcher', function () {
         };
         describe('should work superagent style', function (done) {
             describe('with callbacks', function () {
-                testCrud(it, resource, params, body, config, callback);
+                testCrud(it, resource, params, paths, body, config, callback);
                 it('should throw if no resource is given', function () {
                     expect(fetcher.read).to.throw('Resource is required for a fetcher request');
                 });
@@ -172,7 +206,7 @@ describe('Client Fetcher', function () {
                     var operation = 'create';
                     fetcher
                         [operation](resource)
-                        .params(params)
+                        .params({query: params, paths: paths})
                         .body(body)
                         .clientConfig(config)
                         .end()
@@ -182,7 +216,7 @@ describe('Client Fetcher', function () {
                     var operation = 'read';
                     fetcher
                         [operation](resource)
-                        .params(params)
+                        .params({query: params, paths: paths})
                         .clientConfig(config)
                         .end()
                         .then(resolve(operation, done), reject(operation, done));
@@ -191,7 +225,7 @@ describe('Client Fetcher', function () {
                     var operation = 'update';
                     fetcher
                         [operation](resource)
-                        .params(params)
+                        .params({query: params, paths: paths})
                         .body(body)
                         .clientConfig(config)
                         .end()
@@ -201,7 +235,7 @@ describe('Client Fetcher', function () {
                     var operation = 'delete';
                     fetcher
                         [operation](resource)
-                        .params(params)
+                        .params({query: params, paths: paths})
                         .clientConfig(config)
                         .end()
                         .then(resolve(operation, done), reject(operation, done));
@@ -211,44 +245,6 @@ describe('Client Fetcher', function () {
                 });
             })
         });
-        describe('should be backwards compatible', function (done) {
-            // with config
-            it('should handle CREATE', function (done) {
-                var operation = 'create';
-                fetcher[operation](resource, params, body, config, callback(operation, done));
-            });
-            it('should handle READ', function (done) {
-                var operation = 'read';
-                fetcher[operation](resource, params, config, callback(operation, done));
-            });
-            it('should handle UPDATE', function (done) {
-                var operation = 'update';
-                fetcher[operation](resource, params, body, config, callback(operation, done));
-            });
-            it('should handle DELETE', function (done) {
-                var operation = 'delete';
-                fetcher[operation](resource, params, config, callback(operation, done));
-            });
-
-            // without config
-            it('should handle CREATE w/ no config', function (done) {
-                var operation = 'create';
-                fetcher[operation](resource, params, body, callback(operation, done));
-            });
-            it('should handle READ w/ no config', function (done) {
-                var operation = 'read';
-                fetcher[operation](resource, params, callback(operation, done));
-            });
-            it('should handle UPDATE w/ no config', function (done) {
-                var operation = 'update';
-                fetcher[operation](resource, params, body, callback(operation, done));
-            });
-            it('should handle DELETE w/ no config', function (done) {
-                var operation = 'delete';
-                fetcher[operation](resource, params, callback(operation, done));
-            });
-        });
-
     });
     describe('CORS', function () {
         // start CORS app at localhost:3001
@@ -268,7 +264,7 @@ describe('Client Fetcher', function () {
                         return done(err);
                     }
                     if (data) {
-                        expect(data).to.deep.equal(params);
+                        expect(data).to.deep.equal(_.assign({}, params, context));
                     }
                     done();
                 };
@@ -289,12 +285,50 @@ describe('Client Fetcher', function () {
                             });
                         });
                 },
+                'delete' : function (url, headers, body, config, callback) {
+                    expect(url).to.not.be.empty;
+                    expect(callback).to.exist;
+                    expect(body).to.exist;
+                    expect(url).to.contain(corsPath)
+                    expect(url).to.contain('_csrf=' + context._csrf);
+                    var path = url.substring(corsPath.length);
+                    console.log(body);
+                    supertest(corsPath)
+                        .post(path)
+                        .send(body)
+                        .expect(200)
+                        .end(function (err, res) {
+                            callback(err, {
+                                responseText: res.text
+                            });
+                        });
+                },
+                put : function (url, headers, body, config, callback) {
+                    expect(url).to.not.be.empty;
+                    expect(callback).to.exist;
+                    expect(body).to.exist;
+                    expect(url).to.contain(corsPath)
+                    expect(url).to.contain('_csrf=' + context._csrf);
+                    var path = url.substring(corsPath.length);
+                    console.log(body);
+                    supertest(corsPath)
+                        .post(path)
+                        .send(body)
+                        .expect(200)
+                        .end(function (err, res) {
+                            callback(err, {
+                                responseText: res.text
+                            });
+                        });
+                },
                 post : function (url, headers, body, config, callback) {
                     expect(url).to.not.be.empty;
                     expect(callback).to.exist;
                     expect(body).to.exist;
-                    expect(url).to.equal(corsPath + '?_csrf=' + context._csrf);
+                    expect(url).to.contain(corsPath)
+                    expect(url).to.contain('_csrf=' + context._csrf);
                     var path = url.substring(corsPath.length);
+                    console.log(body);
                     supertest(corsPath)
                         .post(path)
                         .send(body)
@@ -320,11 +354,11 @@ describe('Client Fetcher', function () {
 
         function constructGetUri (uri, resource, params, config) {
             if (config.cors) {
-                return uri + '/' + resource + '?' + qs.stringify(params, { arrayFormat: 'repeat' });
+                return uri + '/' + resource + '?' + qs.stringify(params);
             }
         }
 
-        testCrud(it, resource, params, body, {
+        testCrud(it, resource, params, [], body, {
             cors: true,
             constructGetUri: constructGetUri
         }, callback);
@@ -367,7 +401,7 @@ describe('Client Fetcher', function () {
                 });
             });
 
-            testCrud(it, resource, params, body, config, callback);
+            testCrud(it, resource, params, [], body, config, callback);
         });
 
         describe('should be configurable per each fetchr call', function () {
@@ -389,7 +423,7 @@ describe('Client Fetcher', function () {
                 });
             });
 
-            testCrud(it, resource, params, body, config, callback);
+            testCrud(it, resource, params, [], body, config, callback);
         });
 
         describe('should default to DEFAULT_XHR_TIMEOUT of 3000', function () {
@@ -408,7 +442,7 @@ describe('Client Fetcher', function () {
                 });
             });
 
-            testCrud(it, resource, params, body, config, callback);
+            testCrud(it, resource, params, [], body, config, callback);
         });
     });
 
@@ -430,7 +464,7 @@ describe('Client Fetcher', function () {
             fetcher = new Fetcher({
                 context: context,
                 contextPicker: {
-                    GET: function getContextPicker(value, key, object) {
+                    read: function getContextPicker(value, key, object) {
                         if (key === 'random') {
                             return false
                         }
@@ -446,12 +480,14 @@ describe('Client Fetcher', function () {
                     expect(url).to.not.contain('random=' + context.random);
                 },
                 validatePOST: function (url, headers, body, config) {
-                    expect(url).to.equal(DEFAULT_XHR_PATH + '?_csrf=' + context._csrf + '&random=' + context.random);
+                    expect(url).to.contain(DEFAULT_XHR_PATH);
+                    expect(url).to.contain('_csrf=' + context._csrf);
+                    expect(url).to.contain('random=' + context.random);
                 }
             });
         });
 
-        testCrud(it, resource, params, body, config, callback);
+        testCrud(it, resource, params, [], body, config, callback);
     });
 
 
@@ -471,8 +507,8 @@ describe('Client Fetcher', function () {
             })
             expect(fetcher.options.xhrTimeout).to.equal(1500);
             // new context should be merged
-            expect(fetcher.options.context._csrf).to.equal('stuff'); 
-            expect(fetcher.options.context.lang).to.equal('en-US'); 
+            expect(fetcher.options.context._csrf).to.equal('stuff');
+            expect(fetcher.options.context.lang).to.equal('en-US');
         });
     });
 });

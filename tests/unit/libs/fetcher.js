@@ -87,32 +87,26 @@ describe('Server Fetcher', function () {
                         method: 'POST',
                         path: '/' + mockService.name,
                         body: {
-                            requests: {
-                                g0: {
-                                    resource: mockService.name,
-                                    operation: operation,
-                                    params: {
-                                        uuids: ['cd7240d6-aeed-3fed-b63c-d7e99e21ca17', 'cd7240d6-aeed-3fed-b63c-d7e99e21ca17'],
-                                        id: 'asdf'
-                                    }
+                                params: {
+                                    uuids: ['cd7240d6-aeed-3fed-b63c-d7e99e21ca17', 'cd7240d6-aeed-3fed-b63c-d7e99e21ca17'],
+                                    id: 'asdf'
+                                },
+                                context: {
+                                    site: '',
+                                    device: ''
                                 }
-                            },
-                            context: {
-                                site: '',
-                                device: ''
-                            }
                         }
                     },
                     res = {
                         json: function(response) {
                             expect(response).to.exist;
                             expect(response).to.not.be.empty;
-                            var data = response.g0.data;
+                            var data = response;
                             expect(data).to.contain.keys('operation', 'args');
                             expect(data.operation.name).to.equal(operation);
                             expect(data.operation.success).to.be.true;
                             expect(data.args).to.contain.keys('params');
-                            expect(data.args.params).to.equal(req.body.requests.g0.params);
+                            expect(data.args.body).to.equal(req.body);
                             expect(statusCodeSet).to.be.true;
                             done();
                         },
@@ -125,8 +119,8 @@ describe('Server Fetcher', function () {
                             console.log('Not Expected: middleware responded with', code);
                         }
                     },
-                    next = function () {
-                        console.log('Not Expected: middleware skipped request');
+                    next = function (code) {
+                        console.log('Not Expected: middleware skipped request' + code);
                     },
                     middleware = Fetcher.middleware();
 
@@ -143,15 +137,9 @@ describe('Server Fetcher', function () {
                         method: 'POST',
                         path: '/' + mockService.name,
                         body: {
-                            requests: {
-                                g0: {
-                                    resource: mockService.name,
-                                    operation: operation,
-                                    params: {
-                                        uuids: ['cd7240d6-aeed-3fed-b63c-d7e99e21ca17', 'cd7240d6-aeed-3fed-b63c-d7e99e21ca17'],
-                                        id: 'asdf'
-                                    }
-                                }
+                            params: {
+                                uuids: ['cd7240d6-aeed-3fed-b63c-d7e99e21ca17', 'cd7240d6-aeed-3fed-b63c-d7e99e21ca17'],
+                                id: 'asdf'
                             },
                             context: {
                                 site: '',
@@ -163,12 +151,12 @@ describe('Server Fetcher', function () {
                         json: function(response) {
                             expect(response).to.exist;
                             expect(response).to.not.be.empty;
-                            var data = response.g0.data;
+                            var data = response;
                             expect(data).to.contain.keys('operation', 'args');
                             expect(data.operation.name).to.equal(operation);
                             expect(data.operation.success).to.be.true;
                             expect(data.args).to.contain.keys('params');
-                            expect(data.args.params).to.equal(req.body.requests.g0.params);
+                            expect(data.args.body).to.equal(req.body);
                             expect(headersSet).to.eql(responseHeaders);
                             expect(statusCodeSet).to.be.true;
                             done();
@@ -207,13 +195,7 @@ describe('Server Fetcher', function () {
                             method: 'POST',
                             path: '/' + mockErrorService.name,
                             body: {
-                                requests: {
-                                    g0: {
-                                        resource: mockErrorService.name,
-                                        operation: operation,
-                                        params: params
-                                    }
-                                },
+                                params: params,
                                 context: {
                                     site: '',
                                     device: ''
@@ -279,7 +261,8 @@ describe('Server Fetcher', function () {
                     },
                     req = {
                         method: 'GET',
-                        path: '/' + mockService.name + ';' + qs.stringify(params, ';')
+                        path: '/' + mockService.name,
+                        query: params,
                     },
                     res = {
                         json: function(response) {
@@ -289,7 +272,7 @@ describe('Server Fetcher', function () {
                             expect(response.operation.name).to.equal(operation);
                             expect(response.operation.success).to.be.true;
                             expect(response.args).to.contain.keys('params');
-                            expect(response.args.params).to.deep.equal(params);
+                            expect(response.args.params.query).to.deep.equal(params);
                             expect(statusCodeSet).to.be.true;
                             done();
                         },
@@ -302,8 +285,8 @@ describe('Server Fetcher', function () {
                             console.log('Not Expected: middleware responded with', code);
                         }
                     },
-                    next = function () {
-                        console.log('Not Expected: middleware skipped request');
+                    next = function (err) {
+                        console.log('Not Expected: middleware skipped request', err);
                     },
                     middleware = Fetcher.middleware({pathPrefix: '/api'});
 
@@ -322,7 +305,8 @@ describe('Server Fetcher', function () {
                     },
                     req = {
                         method: 'GET',
-                        path: '/' + mockService.name + ';' + qs.stringify(params, ';')
+                        path: '/' + mockService.name,
+                        query: params
                     },
                     res = {
                         json: function(response) {
@@ -332,7 +316,7 @@ describe('Server Fetcher', function () {
                             expect(response.operation.name).to.equal(operation);
                             expect(response.operation.success).to.be.true;
                             expect(response.args).to.contain.keys('params');
-                            expect(response.args.params).to.deep.equal(params);
+                            expect(response.args.params.query).to.deep.equal(params);
                             expect(statusCodeSet).to.be.true;
                             expect(headersSet).to.eql(responseHeaders);
                             done();
@@ -371,7 +355,8 @@ describe('Server Fetcher', function () {
                     },
                     req = {
                         method: 'GET',
-                        path: '/' + mockService.name + ';' + qs.stringify(params, ';')
+                        path: '/' + mockService.name,
+                        query: params
                     },
                     res = {
                         json: function(response) {
@@ -381,10 +366,10 @@ describe('Server Fetcher', function () {
                             expect(response.operation.name).to.equal(operation);
                             expect(response.operation.success).to.be.true;
                             expect(response.args).to.contain.keys('params');
-                            expect(response.args.params.id).to.be.a.number;
-                            expect(response.args.params.id.toString()).to.equal(params.id);
-                            expect(response.args.params.bigId).to.be.a.String;
-                            expect(response.args.params.bigId.toString()).to.equal(params.bigId);
+                            expect(response.args.params.query.id).to.be.a.number;
+                            expect(response.args.params.query.id.toString()).to.equal(params.id);
+                            expect(response.args.params.query.bigId).to.be.a.String;
+                            expect(response.args.params.query.bigId.toString()).to.equal(params.bigId);
                             expect(statusCodeSet).to.be.true;
                             done();
                         },
@@ -405,15 +390,6 @@ describe('Server Fetcher', function () {
                 middleware(req, res, next);
             });
 
-            var paramsToQuerystring = function(params) {
-                var str = '';
-                for (var key in params) {
-                    str += ';' + key + '=' + JSON.stringify(params[key]);
-                }
-
-                return str;
-            };
-
             var makeGetApiErrorTest = function(params, expStatusCode, expMessage) {
                 return function(done) {
                     var operation = 'read',
@@ -421,8 +397,8 @@ describe('Server Fetcher', function () {
 
                         req = {
                             method: 'GET',
-                            path: '/' + mockErrorService.name + paramsToQuerystring(params),
-                            params: params,
+                            path: '/' + mockErrorService.name,
+                            query: params,
                         },
 
                         res = {
@@ -496,19 +472,10 @@ describe('Server Fetcher', function () {
             it('should skip invalid POST request', function (done) {
                 makeInvalidReqTest({method: 'POST', body: {
                     requests: {
-                        g0: {
-                            resource: 'invalidService'
-                        }
+                        resource: 'invalidService'
                     }
-                }}, 'Bad resource invalidService', done);
+                }}, 'Bad resource ', done);
             });
-            it('should skip POST request with empty req.body.requests object', function (done) {
-                makeInvalidReqTest({method: 'POST', body: { requests: {}}}, 'No resources', done);
-            });
-            it('should skip POST request with no req.body.requests object', function (done) {
-                makeInvalidReqTest({method: 'POST'}, 'No resources', done);
-            });
-
         });
     });
 
@@ -658,11 +625,11 @@ describe('Server Fetcher', function () {
             });
             it('should handle DELETE', function (done) {
                 var operation = 'delete';
-                fetcher[operation](resource, params, config, callback(operation, done));
+                fetcher[operation](resource, params, body, config, callback(operation, done));
             });
             it('should handle DELETE w/ no config', function (done) {
                 var operation = 'delete';
-                fetcher[operation](resource, params, callback(operation, done));
+                fetcher[operation](resource, params, body, callback(operation, done));
             });
         })
     });

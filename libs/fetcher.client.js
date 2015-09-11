@@ -15,15 +15,15 @@ var lodash = {
         isFunction: require('lodash/lang/isFunction'),
         forEach: require('lodash/collection/forEach'),
         merge: require('lodash/object/merge'),
-        noop: require('lodash/utility/noop'),
         pick: require('lodash/object/pick')
     };
-var DEFAULT_GUID = 'g0';
+//var DEFAULT_GUID = 'g0';
 var DEFAULT_XHR_PATH = '/api';
 var DEFAULT_XHR_TIMEOUT = 3000;
 var MAX_URI_LEN = 2048;
 var OP_READ = 'read';
-var defaultConstructGetUri = require('./util/defaultConstructGetUri');
+var OP_CREATE = 'create';
+var defaultConstructUri = require('./util/defaultConstructUri');
 var Promise = global.Promise || require('es6-promise').Promise;
 
 function parseResponse(response) {
@@ -93,7 +93,7 @@ Request.prototype.params = function (params) {
  * Add body to this fetcher request
  * @method body
  * @memberof Request
- * @param {Object} body The JSON object that contains the resource data being updated for this request. 
+ * @param {Object} body The JSON object that contains the resource data being updated for this request.
  *                      Not used for read and delete operations.
  * @chainable
  */
@@ -148,37 +148,44 @@ Request.prototype.end = function (callback) {
  */
 function executeRequest (request, resolve, reject) {
     var clientConfig = request._clientConfig;
-    var use_post;
+    var use_post_for_read;
+    var override_methods;
     var allow_retry_post;
     var uri = clientConfig.uri;
+    var headers;
     var requests;
     var params;
-    var data;
+    var opmaps = {
+        'create': 'post',
+        'update': 'put',
+        'delete': 'delete'
+    };
+    var opname;
 
     if (!uri) {
         uri = clientConfig.cors ? request.options.corsPath : request.options.xhrPath;
     }
 
-    use_post = request.operation !== OP_READ || clientConfig.post_for_read;
-    // We use GET request by default for READ operation, but you can override that behavior
-    // by specifying {post_for_read: true} in your request's clientConfig
-    if (!use_post) {
-        var getUriFn = lodash.isFunction(clientConfig.constructGetUri) ? clientConfig.constructGetUri : defaultConstructGetUri;
-        var get_uri = getUriFn.call(request, uri, request.resource, request._params, clientConfig, pickContext(request.options.context, request.options.contextPicker, 'GET'));
-        /* istanbul ignore next */
-        if (!get_uri) {
-            // If a custom getUriFn returns falsy value, we should run defaultConstructGetUri
-            // TODO: Add test for this fallback
-            get_uri = defaultConstructGetUri.call(request, uri, request.resource, request._params, clientConfig, request.options.context);
-        }
-        if (get_uri.length <= MAX_URI_LEN) {
-            uri = get_uri;
-        } else {
-            use_post = true;
-        }
+    override_methods = clientConfig.override_methods || false;
+
+    use_post_for_read = request.operation !== OP_READ || clientConfig.post_for_read;
+    var uriFn = lodash.isFunction(clientConfig.constructUri) ? clientConfig.constructUri : defaultConstructUri;
+    debug(request.operation);
+    debug(pickContext(request.options.context, request.options.contextPicker, request.operation));
+    var temp_uri = uriFn.call(request, uri, request.resource, request._params, clientConfig, pickContext(request.options.context, request.options.contextPicker, request.operation));
+
+    if (request.operation === OP_READ) {
+       if (temp_uri.length <= MAX_URI_LEN) {
+           uri = temp_uri;
+       } else {
+           uri = uriFn.call(request, uri, request.resource, request._params, clientConfig, pickContext(request.options.context, request.options.contextPicker, OP_READ));
+           use_post_for_read = true;
+       }
+    } else {
+        uri = temp_uri;
     }
 
-    if (!use_post) {
+    if (request.operation === OP_READ && !use_post_for_read) {
         return REST.get(uri, {}, lodash.merge({xhrTimeout: request.options.xhrTimeout}, clientConfig), function getDone(err, response) {
             if (err) {
                 debug('Syncing ' + request.resource + ' failed: statusCode=' + err.statusCode, 'info');
@@ -188,54 +195,43 @@ function executeRequest (request, resolve, reject) {
         });
     }
 
+    // Here we are handling POST, PUT and DELETE requests
+
     // individual request is also normalized into a request hash to pass to api
     requests = {};
-    requests[DEFAULT_GUID] = {
-        resource: request.resource,
-        operation: request.operation,
-        params: request._params
-    };
     if (request._body) {
-        requests[DEFAULT_GUID].body = request._body;
+        requests.body = request._body;
     }
-    data = {
-        requests: requests,
-        context: request.options.context
-    }; // TODO: remove. leave here for now for backward compatibility
-    uri = request._constructGroupUri(uri);
+
+    if (use_post_for_read && request.operation === OP_READ) {
+        requests.operation = OP_READ;
+    }
+
     allow_retry_post = (request.operation === OP_READ);
-    REST.post(uri, {}, data, lodash.merge({unsafeAllowRetry: allow_retry_post, xhrTimeout: request.options.xhrTimeout}, clientConfig), function postDone(err, response) {
+
+    opname = opmaps[request.operation];
+
+    headers = {};
+    if (override_methods) {
+        headers['X-Http-Method-Override'] = opname.toUpperCase();
+        request.operation = request.operation;
+        opname = 'POST';
+    }
+
+    debug('REST operation', uri);
+    REST[opname](uri, headers, requests, lodash.merge({unsafeAllowRetry: allow_retry_post, xhrTimeout: request.options.xhrTimeout}, clientConfig), function postDone(err, response) {
         if (err) {
             debug('Syncing ' + request.resource + ' failed: statusCode=' + err.statusCode, 'info');
             return reject(err);
         }
         var result = parseResponse(response);
-        if (result) {
-            result = result[DEFAULT_GUID] || {};
-        } else {
+        if (!result) {
             result = {};
         }
-        resolve(result.data);
+        resolve(result);
     });
 };
 
-/**
- * Build a final uri by adding query params to base uri from this.context
- * @method _constructGroupUri
- * @param {String} uri the base uri
- * @private
- */
-Request.prototype._constructGroupUri = function (uri) {
-    var query = [];
-    var final_uri = uri;
-    lodash.forEach(pickContext(this.options.context, this.options.contextPicker, 'POST'), function eachContext(v, k) {
-        query.push(k + '=' + encodeURIComponent(v));
-    });
-    if (query.length > 0) {
-        final_uri += '?' + query.sort().join('&');
-    }
-    return final_uri;
-};
 
 /**
  * Fetcher class for the client. Provides CRUD methods.
@@ -350,11 +346,14 @@ Fetcher.prototype = {
      * @param {String} resource     The resource name
      * @param {Object} params       The parameters identify the resource, and along with information
      *                              carried in query and matrix parameters in typical REST API
+     * @param {Object} body         The JSON object that contains the resource data that is being updated.
+     *                              I added this, because I think that DELETE
+     *                              should allow a message body in certain cases.
      * @param {Object} clientConfig The "config" object for per-request config data.
      * @param {Function} callback   callback convention is the same as Node.js
      * @static
      */
-    'delete': function (resource, params, clientConfig, callback) {
+    'delete': function (resource, params, body, clientConfig, callback) {
         var request = new Request('delete', resource, this.options);
         if (1 === arguments.length) {
             return request;
@@ -366,6 +365,7 @@ Fetcher.prototype = {
         }
         request
             .params(params)
+            .body(body)
             .clientConfig(clientConfig)
             .end(callback)
     },
